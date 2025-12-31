@@ -1,0 +1,181 @@
+================================================================================
+                    Logo Recognition 快速开始指南
+          Based on: "Scalable Logo Recognition using Proxies"
+                         IEEE WACV 2019
+================================================================================
+
+【第一步：创建 Conda 环境】
+--------------------------------------------------------------------------------
+
+方法A - 使用配置脚本（推荐）:
+    双击运行: setup_env.bat
+
+方法B - 手动配置:
+    
+    # 1. 创建环境
+    conda create -n logo_recognition python=3.9 -y
+    
+    # 2. 激活环境
+    conda activate logo_recognition
+    
+    # 3. 安装 PyTorch (根据你的GPU选择)
+    
+    # 有 NVIDIA GPU (CUDA 11.8):
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    
+    # 有 NVIDIA GPU (CUDA 12.1):
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    
+    # 无 GPU (仅CPU):
+    pip install torch torchvision torchaudio
+    
+    # 4. 安装其他依赖
+    pip install numpy Pillow tqdm opencv-python scikit-learn matplotlib tensorboard PyYAML
+
+
+【第二步：准备数据集】
+--------------------------------------------------------------------------------
+
+推荐数据集: FlickrLogos-32
+下载地址: https://www.kaggle.com/datasets/faisalzaman23/flickrlogos32
+
+1. 运行数据准备脚本创建目录结构:
+   python prepare_data.py
+
+2. 下载数据集并解压到:
+   logo_recognition/data/raw/flickrlogos32/
+
+3. 数据格式说明:
+
+   【检测器数据 - VOC格式】
+   data/detection/train/
+   ├── images/
+   │   ├── 001.jpg
+   │   └── 002.jpg
+   └── annotations/
+       ├── 001.xml    <- VOC格式XML
+       └── 002.xml
+   
+   XML格式示例:
+   <annotation>
+     <filename>001.jpg</filename>
+     <size><width>512</width><height>512</height><depth>3</depth></size>
+     <object>
+       <name>logo</name>
+       <bndbox>
+         <xmin>100</xmin><ymin>100</ymin>
+         <xmax>200</xmax><ymax>200</ymax>
+       </bndbox>
+     </object>
+   </annotation>
+
+   【识别器数据 - 分类文件夹】
+   data/recognition/train/
+   ├── adidas/
+   │   ├── logo1.jpg    <- 裁剪后的logo图片
+   │   └── logo2.jpg
+   ├── nike/
+   │   └── logo1.jpg
+   └── ...
+
+
+【第三步：验证环境】
+--------------------------------------------------------------------------------
+
+    conda activate logo_recognition
+    cd logo_recognition
+    python demo.py
+
+正常输出应该显示:
+- PyTorch版本
+- 模型创建成功
+- 前向传播测试通过
+
+
+【第四步：训练模型】
+--------------------------------------------------------------------------------
+
+【训练检测器】(Faster R-CNN, 论文用20个epoch)
+
+    python train.py --mode detector \
+        --train_dir ./data/detection/train/images \
+        --train_ann_dir ./data/detection/train/annotations \
+        --val_dir ./data/detection/val/images \
+        --val_ann_dir ./data/detection/val/annotations \
+        --epochs 20 \
+        --batch_size 4 \
+        --save_dir ./checkpoints
+
+【训练识别器】(SE-ResNet50 + Proxy-Triplet Loss)
+
+    python train.py --mode recognizer \
+        --train_dir ./data/recognition/train \
+        --val_dir ./data/recognition/val \
+        --epochs 100 \
+        --batch_size 32 \
+        --use_stn \
+        --save_dir ./checkpoints
+
+
+【第五步：推理测试】
+--------------------------------------------------------------------------------
+
+    python inference.py \
+        --detector ./checkpoints/detector_best.pth \
+        --recognizer ./checkpoints/recognizer_best.pth \
+        --reference_dir ./data/recognition/reference \
+        --input ./test_image.jpg \
+        --output ./results \
+        --visualize
+
+
+【常见问题】
+--------------------------------------------------------------------------------
+
+Q: CUDA out of memory
+A: 减小 batch_size，检测器建议 2-4，识别器建议 16-32
+
+Q: 训练太慢
+A: 确认使用了GPU版本PyTorch:
+   python -c "import torch; print(torch.cuda.is_available())"
+
+Q: 找不到数据
+A: 检查数据路径是否正确，运行 python prepare_data.py 创建目录结构
+
+Q: 模型效果不好
+A: 
+   - 增加训练数据
+   - 调整学习率 (--lr)
+   - 增加训练轮数 (--epochs)
+
+
+【论文参考指标】
+--------------------------------------------------------------------------------
+
+在 FlickrLogos-32 数据集上:
+- Universal Detector: 79.87% Recall, 0.42 AP
+- Few-shot Recognizer: 97.16% Top-1 Recall  
+- 端到端系统: 56.55% mAP@5 (当时的SOTA)
+
+
+【项目结构】
+--------------------------------------------------------------------------------
+
+logo_recognition/
+├── setup_env.bat          # 环境配置脚本
+├── prepare_data.py        # 数据准备脚本
+├── demo.py                # 快速测试
+├── train.py               # 训练脚本
+├── inference.py           # 推理脚本
+├── dataset.py             # 数据集模块
+├── requirements.txt       # 依赖列表
+├── models/
+│   ├── detector.py        # Faster R-CNN 检测器
+│   └── recognizer.py      # SE-ResNet50 识别器
+├── configs/
+│   └── config.yaml        # 配置文件
+├── data/                  # 数据目录
+├── checkpoints/           # 模型保存
+└── logs/                  # TensorBoard日志
+
+================================================================================
